@@ -1,0 +1,196 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DLS Cup Competition</title><style>body{margin:0;font-family:Arial;background:#0b1220;color:#fff}header{text-align:center;padding:35px 15px;background:linear-gradient(135deg,#172554,#1e3a8a);border-bottom:3px solid #facc15}h1{font-size:clamp(30px,7vw,54px);margin:8px}h2{color:#facc15}nav{position:sticky;top:0;background:#111827;padding:10px;text-align:center;z-index:2}nav a{display:inline-block;color:#fff;text-decoration:none;background:#243451;padding:9px 12px;border-radius:7px;margin:3px}main{max-width:1050px;margin:auto;padding:16px}.card{background:#111827;border:1px solid #293956;border-radius:14px;padding:18px;margin:15px 0}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.stat{background:#1e293b;padding:14px;text-align:center;border-radius:9px}.stat b{display:block;font-size:25px;color:#facc15}.wrap{overflow:auto}table{border-collapse:collapse;width:100%;min-width:650px}th,td{padding:10px;border-bottom:1px solid #334155;text-align:center}th{color:#facc15;background:#1e293b}td:first-child,th:first-child{text-align:left}.round{background:#0f172a;padding:10px;border-radius:9px;margin:10px 0}.match{display:flex;justify-content:space-between;gap:8px;padding:10px;margin:5px 0;background:#1e293b;border-radius:7px}input{width:42px;background:#020617;color:white;border:1px solid #64748b;border-radius:5px;padding:6px;text-align:center}button{background:#facc15;border:0;border-radius:7px;padding:9px 13px;font-weight:bold}@media(max-width:650px){.stats{grid-template-columns:1fr}.match{font-size:12px}}</style></head><body><header><div style="font-size:58px">🏆</div><h1>DLS CUP COMPETITION</h1><p>8 Players • 7 Matches Each • One Champion</p></header><nav><a href="#home">Home</a><a href="#table">League Table</a><a href="#fixtures">Fixtures</a><a href="#results">Results</a><a href="#players">Players</a></nav><main><section id="home" class="card" style="text-align:center"><h2>Welcome to the DLS Cup</h2><p>Every player plays every other player once.</p><div class="stats"><div class="stat"><b>8</b>Players</div><div class="stat"><b>28</b>Total Matches</div><div class="stat"><b>7</b>Matches Each</div></div></section><section id="table" class="card"><h2>📊 League Table</h2><div class="wrap"><table><thead><tr><th>Player</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th><th>Pts</th></tr></thead><tbody id="tb"></tbody></table></div><br><button onclick="resetAll()">Reset Results</button></section><section id="fixtures" class="card"><h2>📅 Fixtures</h2><div id="fx"></div></section><section id="results" class="card">
+<h2>⚽ Match Results</h2>
+<div id="adminPanel">
+  <p>Only the tournament administrator can enter or change scores.</p>
+  <button id="loginBtn" onclick="adminLogin()">🔐 Admin Login</button>
+  <button id="logoutBtn" onclick="adminLogout()" style="display:none">Logout</button>
+  <span id="adminStatus" style="margin-left:8px"></span>
+</div>
+<div id="rs"></div>
+</section><section id="players" class="card"><h2>👥 Players</h2><ol id="pl"></ol></section><p style="font-size:13px;color:#94a3b8;text-align:center">Scores are stored online and can only be changed through the administrator account.</p></main><footer style="text-align:center;padding:25px;color:#94a3b8">DLS Cup Competition</footer><script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
+  from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc }
+  from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+
+/*
+  FIREBASE SETUP:
+  Replace the values below with your Firebase project's Web App config.
+  Then enable Email/Password Authentication and create your own admin account.
+*/
+const firebaseConfig = {
+  apiKey: "AIzaSyD_r8LAgcA4EbL13eEpkRpVCXj24lIuMH0",
+  authDomain: "dls-cup-competition.firebaseapp.com",
+  projectId: "dls-cup-competition",
+  storageBucket: "dls-cup-competition.firebasestorage.app",
+  messagingSenderId: "631162589385",
+  appId: "1:631162589385:web:f50610d35e7bd709107d18",
+  measurementId: "G-64RVL4D7N9"
+};
+
+const ADMIN_EMAIL = "musaaruwa1818@gmail.com";
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+function renderEmptyTable(){
+  const body=document.getElementById('tb');
+  if(!body) return;
+  body.innerHTML=players.map((name,i)=>`<tr><td>${i+1}. ${name}</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td><b>0</b></td></tr>`).join('');
+}
+
+const players=['FC Aruwa','Red Devil','AA Millions','Ugendu','Jenom','Sani','Abdul Hamid','Abdul Kadir'];
+let a=[...players], rounds=[];
+for(let r=0;r<7;r++){
+  let g=[];
+  for(let i=0;i<4;i++) g.push([a[i],a[7-i]]);
+  rounds.push(g);
+  a=[a[0],a[7],...a.slice(1,7)];
+}
+const matches=rounds.flatMap((g,r)=>g.map((m,i)=>({
+  id:`r${r+1}m${i+1}`,round:r+1,a:m[0],b:m[1]
+})));
+
+let results = {};
+renderEmptyTable();
+
+async function loadResults(){
+  try{
+    const snap = await getDoc(doc(db,"tournament","results"));
+    results = snap.exists() ? (snap.data().results || {}) : {};
+  }catch(e){
+    console.error(e);
+    results = {};
+    const status=document.getElementById('adminStatus');
+    if(status) status.textContent='⚠️ Online results could not be loaded';
+  }
+}
+
+function table(){
+  let s={};
+  players.forEach(p=>s[p]={p:0,w:0,d:0,l:0,gf:0,ga:0,pts:0});
+  matches.forEach(m=>{
+    let x=results[m.id];
+    if(!x || x.a==='' || x.b==='') return;
+    let A=+x.a,B=+x.b;
+    s[m.a].p++; s[m.b].p++;
+    s[m.a].gf+=A; s[m.a].ga+=B;
+    s[m.b].gf+=B; s[m.b].ga+=A;
+    if(A>B){s[m.a].w++;s[m.b].l++;s[m.a].pts+=3}
+    else if(B>A){s[m.b].w++;s[m.a].l++;s[m.b].pts+=3}
+    else{s[m.a].d++;s[m.b].d++;s[m.a].pts++;s[m.b].pts++}
+  });
+  let q=players.map(n=>({...s[n],name:n,gd:s[n].gf-s[n].ga}))
+    .sort((x,y)=>y.pts-x.pts||y.gd-x.gd||y.gf-x.gf);
+  document.getElementById('tb').innerHTML=q.map((x,i)=>`
+    <tr><td>${i+1}. ${x.name}</td><td>${x.p}</td><td>${x.w}</td>
+    <td>${x.d}</td><td>${x.l}</td><td>${x.gf}</td><td>${x.ga}</td>
+    <td>${x.gd}</td><td><b>${x.pts}</b></td></tr>`).join('');
+}
+
+function renderFixtures(){
+  document.getElementById('fx').innerHTML=rounds.map((g,r)=>`
+    <div class="round"><h3>Round ${r+1}</h3>
+    ${g.map(m=>`<div class="match"><span>${m[0]}</span><b>VS</b><span>${m[1]}</span></div>`).join('')}
+    </div>`).join('');
+}
+
+function renderPlayers(){
+  document.getElementById('pl').innerHTML=players.map(p=>`<li>${p}</li>`).join('');
+}
+
+function renderResults(){
+  const isAdmin = auth.currentUser && auth.currentUser.email === ADMIN_EMAIL;
+  const rs = document.getElementById('rs');
+
+  if(!isAdmin){
+    rs.innerHTML = '<p style="color:#94a3b8">Results are controlled by the tournament administrator.</p>';
+    return;
+  }
+
+  rs.innerHTML=matches.map(m=>{
+    let x=results[m.id]||{a:'',b:''};
+    return `<div class="match">
+      <span>R${m.round}: ${m.a}</span>
+      <span>
+        <input type="number" min="0" id="${m.id}a" value="${x.a}" onchange="saveScore('${m.id}')">
+        -
+        <input type="number" min="0" id="${m.id}b" value="${x.b}" onchange="saveScore('${m.id}')">
+      </span>
+      <span>${m.b}</span>
+    </div>`;
+  }).join('');
+}
+
+window.resetAll = async function(){
+  if(!auth.currentUser || auth.currentUser.email !== ADMIN_EMAIL){
+    alert("Only the tournament administrator can reset results.");
+    return;
+  }
+  if(!confirm("Reset all results?")) return;
+  results = {};
+  try{
+    await setDoc(doc(db,"tournament","results"),{results});
+    table();
+    renderResults();
+  }catch(e){
+    console.error(e);
+    alert("Could not reset the results.");
+  }
+};
+
+window.saveScore = async function(id){
+  if(!auth.currentUser || auth.currentUser.email !== ADMIN_EMAIL){
+    alert("Only the tournament administrator can change scores.");
+    return;
+  }
+
+  const aVal=document.getElementById(id+'a').value;
+  const bVal=document.getElementById(id+'b').value;
+  results[id]={a:aVal,b:bVal};
+
+  try{
+    await setDoc(doc(db,"tournament","results"),{results},{merge:true});
+    table();
+  }catch(e){
+    console.error(e);
+    alert("Could not save the result. Check your Firebase setup.");
+  }
+};
+
+window.adminLogin = async function(){
+  const email=prompt("Admin email:");
+  if(!email) return;
+  const password=prompt("Admin password:");
+  if(!password) return;
+
+  try{
+    await signInWithEmailAndPassword(auth,email,password);
+  }catch(e){
+    alert("Login failed. Check the admin email and password.");
+  }
+};
+
+window.adminLogout = async function(){
+  await signOut(auth);
+};
+
+onAuthStateChanged(auth, async user=>{
+  const isAdmin = user && user.email === ADMIN_EMAIL;
+  document.getElementById('loginBtn').style.display=isAdmin?'none':'inline-block';
+  document.getElementById('logoutBtn').style.display=isAdmin?'inline-block':'none';
+  document.getElementById('adminStatus').textContent=isAdmin?'✅ Admin mode':'';
+  renderResults();
+});
+
+async function start(){
+  renderFixtures();
+  renderPlayers();
+  await loadResults();
+  table();
+  renderResults();
+}
+start();
+</script></body></html>
